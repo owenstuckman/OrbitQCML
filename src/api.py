@@ -264,7 +264,7 @@ async def model_info():
 def run_server():
     """Run the API server."""
     import uvicorn
-    uvicorn.run(app, host=API_HOST, port=API_PORT)
+    uvicorn.run(app, host=API_HOST, port=8001)
 
 
 if __name__ == "__main__":

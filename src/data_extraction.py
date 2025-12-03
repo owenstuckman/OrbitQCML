@@ -4,11 +4,10 @@ Extract PR data from GitHub repositories.
 Handles API rate limiting, pagination, and data persistence.
 """
 
-from datetime import datetime, timedelta, timezone
 import os
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -42,7 +41,11 @@ class GitHubExtractor:
         """Wait for rate limit reset."""
         rate_limit = self.client.get_rate_limit()
         reset_time = rate_limit.core.reset
-        sleep_time = (reset_time - datetime.utcnow()).total_seconds() + 10
+        # Make reset_time timezone-aware if it isn't
+        if reset_time.tzinfo is None:
+            reset_time = reset_time.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        sleep_time = (reset_time - now).total_seconds() + 10
         if sleep_time > 0:
             print(f"Rate limited. Sleeping for {sleep_time:.0f} seconds...")
             time.sleep(sleep_time)
@@ -115,14 +118,38 @@ class GitHubExtractor:
         self, 
         repo_name: str, 
         since_date: Optional[datetime] = None,
-        max_prs: Optional[int] = None
+        max_prs: Optional[int] = None,
+        checkpoint_every: int = 100,
     ) -> list[dict]:
-        """Extract all PRs from a repository."""
+        """
+        Extract all PRs from a repository.
+        
+        Args:
+            repo_name: GitHub repo in "owner/repo" format
+            since_date: Only extract PRs updated after this date
+            max_prs: Maximum PRs to extract
+            checkpoint_every: Save checkpoint every N PRs (for crash recovery)
+        """
         
         if since_date is None:
             since_date = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
         
         max_prs = max_prs or MAX_PRS_PER_REPO
+        
+        # Check for partial checkpoint
+        safe_name = repo_name.replace("/", "_")
+        checkpoint_path = self.data_dir / f"checkpoint_{safe_name}.json"
+        
+        records = []
+        last_pr_number = None
+        
+        if checkpoint_path.exists():
+            print(f"\nFound checkpoint for {repo_name}, resuming...")
+            with open(checkpoint_path) as f:
+                checkpoint = json.load(f)
+            records = checkpoint.get("records", [])
+            last_pr_number = checkpoint.get("last_pr_number")
+            print(f"  Resuming from PR #{last_pr_number} ({len(records)} PRs already collected)")
         
         print(f"\nExtracting PRs from {repo_name}...")
         print(f"  Since: {since_date.date()}")
@@ -132,21 +159,29 @@ class GitHubExtractor:
             repo = self.client.get_repo(repo_name)
         except Exception as e:
             print(f"Error accessing repo {repo_name}: {e}")
-            return []
+            return records  # Return any checkpointed records
         
         # Get closed PRs (includes merged)
         prs = repo.get_pulls(state="closed", sort="updated", direction="desc")
         
-        records = []
-        pr_count = 0
+        pr_count = len(records)
+        skipping = last_pr_number is not None
         
-        with tqdm(desc=f"  Processing", unit=" PRs") as pbar:
+        with tqdm(desc=f"  Processing", unit=" PRs", initial=pr_count) as pbar:
             for pr in prs:
                 # Check rate limit
                 try:
+                    # Skip until we reach where we left off
+                    if skipping:
+                        if pr.number == last_pr_number:
+                            skipping = False
+                        continue
+                    
+                    # Handle timezone-aware comparison
                     pr_updated = pr.updated_at
                     if pr_updated.tzinfo is None:
                         pr_updated = pr_updated.replace(tzinfo=timezone.utc)
+                    
                     if pr_updated < since_date:
                         break
                     
@@ -159,38 +194,87 @@ class GitHubExtractor:
                         records.append(record)
                         pr_count += 1
                         pbar.update(1)
+                        
+                        # Save checkpoint periodically
+                        if pr_count % checkpoint_every == 0:
+                            self._save_checkpoint(
+                                checkpoint_path, records, pr.number
+                            )
                     
                     if max_prs and pr_count >= max_prs:
                         break
                         
                 except RateLimitExceededException:
+                    # Save checkpoint before waiting
+                    self._save_checkpoint(checkpoint_path, records, pr.number)
                     self._handle_rate_limit()
                     continue
+                except KeyboardInterrupt:
+                    # Save checkpoint on interrupt
+                    print("\n\nInterrupted! Saving checkpoint...")
+                    self._save_checkpoint(checkpoint_path, records, pr.number)
+                    raise
+                except Exception as e:
+                    print(f"\nError on PR #{pr.number}: {e}")
+                    continue
+        
+        # Clean up checkpoint on successful completion
+        if checkpoint_path.exists():
+            checkpoint_path.unlink()
+            print(f"  Removed checkpoint file")
         
         print(f"  Extracted {len(records)} PRs")
         return records
     
+    def _save_checkpoint(self, path: Path, records: list, last_pr: int):
+        """Save extraction checkpoint for crash recovery."""
+        checkpoint = {
+            "records": records,
+            "last_pr_number": last_pr,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with open(path, "w") as f:
+            json.dump(checkpoint, f)
+        # Don't print every time, too noisy
+    
     def extract_all_repos(
         self, 
         repos: Optional[list[str]] = None,
-        save_intermediate: bool = True
+        save_intermediate: bool = True,
+        resume: bool = True,
     ) -> list[dict]:
-        """Extract PRs from all target repositories."""
+        """
+        Extract PRs from all target repositories.
         
+        Args:
+            repos: List of repos to extract from
+            save_intermediate: Save each repo's data separately
+            resume: Skip repos that already have cached data
+        """
         repos = repos or TARGET_REPOS
         all_records = []
         
         for repo_name in repos:
+            safe_name = repo_name.replace("/", "_")
+            cache_path = self.data_dir / f"raw_{safe_name}.json"
+            
+            # Check for existing data if resume is enabled
+            if resume and cache_path.exists():
+                print(f"\nFound cached data for {repo_name}, loading...")
+                with open(cache_path) as f:
+                    records = json.load(f)
+                print(f"  Loaded {len(records)} PRs from cache")
+                all_records.extend(records)
+                continue
+            
             records = self.extract_repo(repo_name)
             all_records.extend(records)
             
             if save_intermediate:
                 # Save per-repo data
-                safe_name = repo_name.replace("/", "_")
-                output_path = self.data_dir / f"raw_{safe_name}.json"
-                with open(output_path, "w") as f:
+                with open(cache_path, "w") as f:
                     json.dump(records, f, indent=2)
-                print(f"  Saved to {output_path}")
+                print(f"  Saved to {cache_path}")
         
         # Save combined data
         output_path = self.data_dir / "raw_all_prs.json"
