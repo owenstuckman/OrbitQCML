@@ -22,6 +22,8 @@ TARGET_REPOS = [
     "pytorch/pytorch",
     "rust-lang/rust",
     "facebook/react",
+    "tensorflow/tensorflow",
+    "freeCodeCamp/freeCodeCamp",
 ]
 
 # Data collection settings
