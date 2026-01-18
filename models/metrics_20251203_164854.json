@@ -1,0 +1,126 @@
+{
+  "uncalibrated": {
+    "auc": 0.8120025732928959,
+    "brier": 0.03906301885792896,
+    "accuracy": 0.9584923664122137,
+    "calibration_error": 0.25560024956538885,
+    "prob_true": [
+      1.0,
+      1.0,
+      0.5238095238095238,
+      0.8064516129032258,
+      0.7413793103448276,
+      0.8980891719745223,
+      0.9651898734177216,
+      0.9847480106100795
+    ],
+    "prob_pred": [
+      0.2392509834065615,
+      0.38354146974207115,
+      0.4553493578741953,
+      0.5631236986589764,
+      0.6554101516575076,
+      0.7560788768431087,
+      0.8573394608366927,
+      0.9647715075176765
+    ]
+  },
+  "calibrated": {
+    "auc": 0.8067334497442025,
+    "brier": 0.03628049995555567,
+    "accuracy": 0.958969465648855,
+    "calibration_error": 0.2473552575037387,
+    "prob_true": [
+      1.0,
+      0.42857142857142855,
+      0.7333333333333333,
+      0.8776223776223776,
+      0.9828864803194524
+    ],
+    "prob_pred": [
+      0.0010218668211169663,
+      0.5714285714285713,
+      0.649328449328449,
+      0.8732520868529606,
+      0.976320643611086
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "author_pass_rate",
+      "importance": 0.13547508705691377
+    },
+    {
+      "feature": "log_lines_changed",
+      "importance": 0.10052358914129866
+    },
+    {
+      "feature": "lines_per_commit",
+      "importance": 0.09297586388693763
+    },
+    {
+      "feature": "author_prior_prs",
+      "importance": 0.09228147892732574
+    },
+    {
+      "feature": "body_length",
+      "importance": 0.08238215742634065
+    },
+    {
+      "feature": "author_avg_cycles",
+      "importance": 0.08172983974104643
+    },
+    {
+      "feature": "lines_per_file",
+      "importance": 0.0770681851444758
+    },
+    {
+      "feature": "title_length",
+      "importance": 0.07188672719362205
+    },
+    {
+      "feature": "hour_of_day",
+      "importance": 0.058833759075198055
+    },
+    {
+      "feature": "commits",
+      "importance": 0.057213935480101556
+    },
+    {
+      "feature": "log_files_changed",
+      "importance": 0.05607094175961553
+    },
+    {
+      "feature": "day_of_week",
+      "importance": 0.035977154410218135
+    },
+    {
+      "feature": "author_experience_level",
+      "importance": 0.034445099280150784
+    },
+    {
+      "feature": "is_refactor",
+      "importance": 0.0062451163570415615
+    },
+    {
+      "feature": "is_weekend",
+      "importance": 0.005531899555785374
+    },
+    {
+      "feature": "has_description",
+      "importance": 0.0033026860893970423
+    },
+    {
+      "feature": "is_feature",
+      "importance": 0.0032282076257431984
+    },
+    {
+      "feature": "is_documentation",
+      "importance": 0.002643896821287247
+    },
+    {
+      "feature": "is_bug_fix",
+      "importance": 0.002184375027500844
+    }
+  ]
+}
